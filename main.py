@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+import configparser
 import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -8,47 +9,68 @@ import time
 
 class Main():
 
-    def get_page_info(self):
+    def __init__(self):
+        # Prepare for using config values
+        config_ini = configparser.ConfigParser()
+        config_ini.read('config.ini', encoding='utf-8')
+        # Gather URL information
+        self.east_url = config_ini['DEFAULT']['EAST_URL']
+        self.west_url = config_ini['DEFAULT']['WEST_URL']
+        self.page_url_list = [self.east_url, self.west_url]
+        # Driver for executing JavaScript
+        self.chrome_driver = config_ini['DEFAULT']['CHROMEDRIVER_PATH']
 
-        # Javascriptを実行するための準備
+    def get_page_info(self, url):
+
+        # Prepare for excuting JavaScript through chrome driver
         options = Options()
         options.set_headless(True)
         driver = webdriver.Chrome(
-            options=options, executable_path='./chromedriver')
+            options=options, executable_path=self.chrome_driver)
 
-        # ページ取得
-        driver.get("https://www.milb.com/stats/")
+        # Get a page information
+        driver.get(url)
 
-        # Javascriptが実行されるのを待つ
+        # Wait for excuting JavaScript
         time.sleep(2)
 
-        # レンダリング結果を取得
+        # Get rendering
         html = driver.page_source
 
-        # 文字コードをUTF-8に変換
+        # Change character code
         html = driver.page_source.encode('utf-8')
 
-        # htmlとして扱い、選手前が記載されている箇所の条件を絞り込む
+        # Use BeautifulSoup for analyze HTML
         soup = BeautifulSoup(html, "html.parser")
 
         return soup
 
     def get_name_info(self, soup):
 
-        # 選手名が記載されているタグに絞り込み
+        # Collect player's name information
         found_players_name = soup.find_all(
             'a', attrs={'class': 'bui-link', 'aria-label': True})
 
-        # 選手名を取得
+        # Get player's name values
         players_name_list = []
         for tag in found_players_name:
             players_name_list.append(tag.get("aria-label"))
 
         return players_name_list
 
+    def get_position_info(self, soup):
+        position_info = soup.find_all(
+            'div', attrs={'class': 'position-28TbwVOg'})
+
+        position_list = []
+        for position in position_info:
+            position_list.append(position.getText())
+
+        return position_list
+
     def get_stats_info(self, soup):
 
-        # 成績の数字が記載されているタグに絞り込み
+        # Collect stats information
         found_stats_data = soup.find_all(
             'td', attrs={
                 'scope': 'row',
@@ -57,7 +79,7 @@ class Main():
         counter = 0
         stats_data_list = []
         tmp_stats = []
-        # 17個で１レコードなので１レコードづつリストを作成して、リストに格納
+        # One record includes 17 columns
         for stats in found_stats_data:
             tmp_stats.append(stats.getText())
             counter += 1
@@ -70,14 +92,14 @@ class Main():
 
     def get_header_info(self, soup):
 
-        # ヘッダー（成績名）が記載されているタグに絞り込み
+        # Get header information
         found_header = soup.find_all(
             'abbr', attrs={
                 'class': re.compile("bui-text.*")})
 
         header = []
         counter = 0
-        # ヘッダーのリストを作成
+        # Header information is duplicated
         for test in found_header:
             if counter % 2 == 1:
                 header.append(test.getText())
@@ -89,41 +111,66 @@ class Main():
 
     def create_data(self, stats_data_list, players_name_list):
 
-        # 成績情報に名前を追加して、データを完成させる
+        # Add player's name to stats information
         for i, stats in enumerate(stats_data_list):
             stats_data_list[i].insert(0, players_name_list[i])
 
         return stats_data_list
 
     def create_sorted_data(self, stats_data_list, index):
-        # 並び替え(とりあえずホームラン数)
+        # Sort information(temporary it's sorted by OPS)
         stats_data_list = sorted(
             stats_data_list,
             reverse=True,
-            key=lambda x: int(x[index]))
+            key=lambda x: x[index])
+            # key=lambda x: int(x[index]))
         return stats_data_list
+
+    def write_down_data(self, data):
+        # Write information as a csv file
+        with open('./result.csv', 'w', newline='') as result:
+            writer = csv.writer(result)
+            for d in data:
+                writer.writerow(d)
+
+    def add_position_data(self, position_list, stats_list):
+        for i, stats in enumerate(stats_list):
+            print(str(i))
+            stats.insert(1, position_list[i])
+
+        return stats_list
 
     def main(self):
 
-        page = self.get_page_info()
+        all_data_list = []
+        page = None
 
-        name_list = self.get_name_info(page)
+        # Collect information about AAA East and West player's stats
+        for page_url in self.page_url_list:
 
-        stats_list = self.get_stats_info(page)
+            page = self.get_page_info(page_url)
+            name_list = self.get_name_info(page)
+            stats_list = self.get_stats_info(page)
+            data_list_no_header = self.create_data(stats_list, name_list)
+
+            position_list = self.get_position_info(page)
+            added_position_list = self.add_position_data(
+                position_list, data_list_no_header)
+
+            all_data_list.extend(added_position_list)
 
         header = self.get_header_info(page)
+        # HTML data does not have postion information
+        header.insert(1, "POSITION")
+        print(all_data_list)
 
-        data_list_no_header = self.create_data(stats_list, name_list)
+        # Sort data
+        sorted_data_list = self.create_sorted_data(all_data_list, 18)
 
-        sorted_data_list = self.create_sorted_data(data_list_no_header, 8)
-
+        # Add header information
         sorted_data_list.insert(0, header)
 
-        # CSVファイルに書き込む
-        with open('./result.csv', 'w', newline='') as result:
-            writer = csv.writer(result)
-            for data in sorted_data_list:
-                writer.writerow(data)
+        self.write_down_data(sorted_data_list)
 
 
 if __name__ == "__main__":
