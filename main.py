@@ -3,6 +3,7 @@ import configparser
 import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import sys
 import re
 import time
 
@@ -135,12 +136,57 @@ class Main():
 
     def add_position_data(self, position_list, stats_list):
         for i, stats in enumerate(stats_list):
-            print(str(i))
+            # print(str(i))
             stats.insert(1, position_list[i])
 
         return stats_list
 
-    def main(self):
+    def add_zero_to_stats(self, data_list):
+        for i, data_detail in enumerate(data_list):
+            for j, data in enumerate(data_detail):
+                if data[0] == '.':
+                    data_list[i][j] = '0' + data
+
+        return data_list
+
+    def decide_priority(self, num):
+        num = int(num)
+        priority = 0
+        if num == 1:
+            priority = 6
+        elif num == 2:
+            priority = 7
+        elif num == 3:
+            priority = 8
+        elif num == 4:
+            priority = 9
+        elif num == 5:
+            priority = 5
+        elif num == 6:
+            priority = 10
+        elif num == 7:
+            priority = 11
+        elif num == 8:
+            priority = 12
+        elif num == 9:
+            priority = 13
+        elif num == 10:
+            priority = 14
+        elif num == 11:
+            priority = 15
+        elif num == 12:
+            priority = 16
+        elif num == 13:
+            priority = 17
+        elif num == 14:
+            priority = 18
+
+        return priority
+
+    def main(self, num):
+
+        priority = self.decide_priority(num)
+        # priority = 18
 
         all_data_list = []
         page = None
@@ -159,13 +205,15 @@ class Main():
 
             all_data_list.extend(added_position_list)
 
+        all_data_list = self.add_zero_to_stats(all_data_list)
+
         header = self.get_header_info(page)
         # HTML data does not have postion information
         header.insert(1, "POSITION")
         print(all_data_list)
 
         # Sort data
-        sorted_data_list = self.create_sorted_data(all_data_list, 18)
+        sorted_data_list = self.create_sorted_data(all_data_list, priority)
 
         # Add header information
         sorted_data_list.insert(0, header)
@@ -174,5 +222,23 @@ class Main():
 
 
 if __name__ == "__main__":
+
+    num = 0
+    while True:
+        num = input(
+            'What is sort priority\n'
+            'Hit(シングルヒット): 1, Tow-Base Hit(ツーベース): 2, '
+            'Three-Base Hit(スリーベース): 3,\n'
+            'HomeRun(ホームラン): 4, Run scored(得点): 5, Run Batted In(打点): 6'
+            'Base On Ball(四球): 7, Strike Out(三振): 8, Stolen Bases(盗塁):  9,'
+            'Caught Stealing(盗塁死): 10, Average(打率): '
+            '11, On-Base Percentage(出塁率): 12'
+            ', Slugging Percentage(長打率): 13, '
+            'On-Base Plus Slugging Percentage(OPS): 14\n')
+        if num.isdecimal() and 1 <= int(num) <= 14:
+            break
+        else:
+            print('Enter right number')
+    # sys.exit()
     main = Main()
-    main.main()
+    main.main(num)
