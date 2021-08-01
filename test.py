@@ -1,9 +1,7 @@
 from bs4 import BeautifulSoup
 import configparser
-import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-import sys
 import re
 import time
 
@@ -34,22 +32,17 @@ class Main():
         # Wait for excuting JavaScript
         time.sleep(2)
 
-        # Get button element
+        # Get buttons element that include both Standard and Expanded
         bottums = driver.find_elements_by_class_name("groupSecondary-1qOL70ym")
-        counter = 1
-        for bottnm in bottums:
-            if counter == 2:
-                # なぜか2回クリックしないと切り替わらない
-                bottnm.click()
-                bottnm.click()
-            counter += 1
+
+        # Get Expanded button
+        bottum = bottums[1]
+        bottum.click()
+        bottum.click()
 
         time.sleep(1)
         # Get rendering
         html = driver.page_source
-
-        # Change character code
-        html = driver.page_source.encode('utf-8')
 
         # Use BeautifulSoup for analyze HTML
         soup = BeautifulSoup(html, "html.parser")
@@ -73,6 +66,8 @@ class Main():
             else:
                 counter += 1
 
+        header = header[2:]
+
         return header
 
     def get_stats_info(self, soup):
@@ -86,12 +81,13 @@ class Main():
         counter = 0
         stats_data_list = []
         tmp_stats = []
-        # One record includes 17 columns
+        # One record includes 16 stats information
         for stats in found_stats_data:
             tmp_stats.append(stats.getText())
             counter += 1
             if counter % 16 == 0:
                 counter = 0
+                del tmp_stats[0]
                 stats_data_list.append(tmp_stats)
                 tmp_stats = []
 

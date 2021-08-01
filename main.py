@@ -3,7 +3,6 @@ import configparser
 import csv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-import sys
 import re
 import time
 
@@ -20,26 +19,47 @@ class Main():
         self.page_url_list = [self.east_url, self.west_url]
         # Driver for executing JavaScript
         self.chrome_driver = config_ini['DEFAULT']['CHROMEDRIVER_PATH']
-
-    def get_page_info(self, url):
-
         # Prepare for excuting JavaScript through chrome driver
         options = Options()
         options.set_headless(True)
-        driver = webdriver.Chrome(
+        self.driver = webdriver.Chrome(
             options=options, executable_path=self.chrome_driver)
 
+    def get_standard_page_info(self, url):
+
         # Get a page information
-        driver.get(url)
+        self.driver.get(url)
 
         # Wait for excuting JavaScript
         time.sleep(2)
 
         # Get rendering
-        html = driver.page_source
+        html = self.driver.page_source
 
-        # Change character code
-        html = driver.page_source.encode('utf-8')
+        # Use BeautifulSoup for analyze HTML
+        soup = BeautifulSoup(html, "html.parser")
+
+        return soup
+
+    def get_extended_page_info(self, url):
+        # Get a page information
+        self.driver.get(url)
+        # Wait for excuting JavaScript
+        time.sleep(2)
+
+        # Get buttons element that include both Standard and Expanded
+        bottums = self.driver.find_elements_by_class_name(
+            "groupSecondary-1qOL70ym")
+
+        # Get Expanded button
+        bottum = bottums[1]
+        # I dont know why but two clicks are needed to change information
+        bottum.click()
+        bottum.click()
+
+        time.sleep(1)
+        # Get rendering
+        html = self.driver.page_source
 
         # Use BeautifulSoup for analyze HTML
         soup = BeautifulSoup(html, "html.parser")
@@ -69,7 +89,7 @@ class Main():
 
         return position_list
 
-    def get_stats_info(self, soup):
+    def get_standard_stats_info(self, soup):
 
         # Collect stats information
         found_stats_data = soup.find_all(
@@ -91,7 +111,30 @@ class Main():
 
         return stats_data_list
 
-    def get_header_info(self, soup):
+    def get_extended_stats_info(self, soup):
+
+        # Collect stats information
+        found_stats_data = soup.find_all(
+            'td', attrs={
+                'scope': 'row',
+                'headers': True})
+
+        counter = 0
+        stats_data_list = []
+        tmp_stats = []
+        # One record includes 16 stats information
+        for stats in found_stats_data:
+            tmp_stats.append(stats.getText())
+            counter += 1
+            if counter % 16 == 0:
+                counter = 0
+                del tmp_stats[0]
+                stats_data_list.append(tmp_stats)
+                tmp_stats = []
+
+        return stats_data_list
+
+    def get_standard_header_info(self, soup):
 
         # Get header information
         found_header = soup.find_all(
@@ -110,11 +153,34 @@ class Main():
 
         return header
 
-    def create_data(self, stats_data_list, players_name_list):
+    def get_extended_header_info(self, soup):
+        # Get header information
+        found_header = soup.find_all(
+            'abbr', attrs={
+                'class': re.compile("bui-text.*")})
+
+        header = []
+        counter = 0
+        # Header information is duplicated
+        for test in found_header:
+            if counter % 2 == 1:
+                header.append(test.getText())
+                counter += 1
+            else:
+                counter += 1
+
+        header = header[2:]
+
+        return header
+
+    def create_data(
+            self, stats_data_list, players_name_list, extended_stats_list):
 
         # Add player's name to stats information
         for i, stats in enumerate(stats_data_list):
             stats_data_list[i].insert(0, players_name_list[i])
+            for extended_stats in extended_stats_list[i]:
+                stats_data_list[i].append(extended_stats)
 
         return stats_data_list
 
@@ -124,7 +190,7 @@ class Main():
             stats_data_list,
             reverse=True,
             key=lambda x: x[index])
-            # key=lambda x: int(x[index]))
+        # key=lambda x: int(x[index]))
         return stats_data_list
 
     def write_down_data(self, data):
@@ -189,17 +255,27 @@ class Main():
         # priority = 18
 
         all_data_list = []
-        page = None
+        standard_page = None
+        extended_page = None
 
         # Collect information about AAA East and West player's stats
         for page_url in self.page_url_list:
 
-            page = self.get_page_info(page_url)
-            name_list = self.get_name_info(page)
-            stats_list = self.get_stats_info(page)
-            data_list_no_header = self.create_data(stats_list, name_list)
+            # Get standard and extended page information
+            standard_page = self.get_standard_page_info(page_url)
+            extended_page = self.get_extended_page_info(page_url)
 
-            position_list = self.get_position_info(page)
+            # Name list is same between standard and extended pages
+            name_list = self.get_name_info(standard_page)
+
+            # Get detail stats information both standard and exteded
+            standard_stats_list = self.get_standard_stats_info(standard_page)
+            extended_stats_list = self.get_extended_stats_info(extended_page)
+
+            data_list_no_header = self.create_data(
+                standard_stats_list, name_list, extended_stats_list)
+
+            position_list = self.get_position_info(standard_page)
             added_position_list = self.add_position_data(
                 position_list, data_list_no_header)
 
@@ -207,16 +283,20 @@ class Main():
 
         all_data_list = self.add_zero_to_stats(all_data_list)
 
-        header = self.get_header_info(page)
+        standard_data_header = self.get_standard_header_info(standard_page)
+        extended_data_header = self.get_extended_header_info(extended_page)
         # HTML data does not have postion information
-        header.insert(1, "POSITION")
-        print(all_data_list)
+        standard_data_header.insert(1, "POSITION")
+
+        standard_data_header.extend(extended_data_header)
+
+        print(standard_data_header)
 
         # Sort data
         sorted_data_list = self.create_sorted_data(all_data_list, priority)
 
         # Add header information
-        sorted_data_list.insert(0, header)
+        sorted_data_list.insert(0, standard_data_header)
 
         self.write_down_data(sorted_data_list)
 
