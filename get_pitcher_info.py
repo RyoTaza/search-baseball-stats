@@ -220,6 +220,8 @@ class Main():
         all_stats = self.add_zero_to_stats(all_data_list)
 
         self.write_down_data(all_stats, all_stats_header)
+        # For memory saving
+        self.driver.close()
 
 
 if __name__ == "__main__":

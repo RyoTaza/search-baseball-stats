@@ -24,6 +24,7 @@ class Main():
         options.set_headless(True)
         self.driver = webdriver.Chrome(
             options=options, executable_path=self.chrome_driver)
+        self.name_deleter = 1
 
     def get_standard_page_info(self, url):
 
@@ -89,53 +90,30 @@ class Main():
 
         return position_list
 
-    def get_standard_stats_info(self, soup):
+    def get_stats_info(self, soup):
 
-        # Collect stats information
-        found_stats_data = soup.find_all(
-            'td', attrs={
-                'scope': 'row',
-                'headers': True})
-
-        counter = 0
         stats_data_list = []
-        tmp_stats = []
-        # One record includes 17 columns
-        for stats in found_stats_data:
-            tmp_stats.append(stats.getText())
-            counter += 1
-            if counter % 17 == 0:
-                counter = 0
-                stats_data_list.append(tmp_stats)
-                tmp_stats = []
+        tmp_standard_stats = []
 
+        # Get header information
+        table_data = soup.find_all("tr")
+
+        # First item should be null so skip the row
+        flag = False
+        for row in table_data:
+            if flag:
+                tmp_standard_stats = []
+                for item in row.find_all('td'):
+                    tmp_standard_stats.append(item.getText())
+                if self.name_deleter % 2 == 0:
+                    tmp_standard_stats.pop(0)
+                stats_data_list.append(tmp_standard_stats)
+            flag = True
+
+        self.name_deleter += 1
         return stats_data_list
 
-    def get_extended_stats_info(self, soup):
-
-        # Collect stats information
-        found_stats_data = soup.find_all(
-            'td', attrs={
-                'scope': 'row',
-                'headers': True})
-
-        counter = 0
-        stats_data_list = []
-        tmp_stats = []
-        # One record includes 16 stats information
-        for stats in found_stats_data:
-            tmp_stats.append(stats.getText())
-            counter += 1
-            if counter % 16 == 0:
-                counter = 0
-                del tmp_stats[0]
-                stats_data_list.append(tmp_stats)
-                tmp_stats = []
-
-        return stats_data_list
-
-    def get_standard_header_info(self, soup):
-
+    def get_header_info(self, soup, extended_flag):
         # Get header information
         found_header = soup.find_all(
             'abbr', attrs={
@@ -151,25 +129,8 @@ class Main():
             else:
                 counter += 1
 
-        return header
-
-    def get_extended_header_info(self, soup):
-        # Get header information
-        found_header = soup.find_all(
-            'abbr', attrs={
-                'class': re.compile("bui-text.*")})
-
-        header = []
-        counter = 0
-        # Header information is duplicated
-        for test in found_header:
-            if counter % 2 == 1:
-                header.append(test.getText())
-                counter += 1
-            else:
-                counter += 1
-
-        header = header[2:]
+        if extended_flag:
+            header = header[2:]
 
         return header
 
@@ -184,18 +145,9 @@ class Main():
 
         return stats_data_list
 
-    def create_sorted_data(self, stats_data_list, index):
-        # Sort information(temporary it's sorted by OPS)
-        stats_data_list = sorted(
-            stats_data_list,
-            reverse=True,
-            key=lambda x: x[index])
-        # key=lambda x: int(x[index]))
-        return stats_data_list
-
     def write_down_data(self, data):
         # Write information as a csv file
-        with open('./result.csv', 'w', newline='') as result:
+        with open('./result_batter.csv', 'w', newline='') as result:
             writer = csv.writer(result)
             for d in data:
                 writer.writerow(d)
@@ -215,44 +167,7 @@ class Main():
 
         return data_list
 
-    def decide_priority(self, num):
-        num = int(num)
-        priority = 0
-        if num == 1:
-            priority = 6
-        elif num == 2:
-            priority = 7
-        elif num == 3:
-            priority = 8
-        elif num == 4:
-            priority = 9
-        elif num == 5:
-            priority = 5
-        elif num == 6:
-            priority = 10
-        elif num == 7:
-            priority = 11
-        elif num == 8:
-            priority = 12
-        elif num == 9:
-            priority = 13
-        elif num == 10:
-            priority = 14
-        elif num == 11:
-            priority = 15
-        elif num == 12:
-            priority = 16
-        elif num == 13:
-            priority = 17
-        elif num == 14:
-            priority = 18
-
-        return priority
-
-    def main(self, num):
-
-        priority = self.decide_priority(num)
-        # priority = 18
+    def main(self):
 
         all_data_list = []
         standard_page = None
@@ -269,56 +184,40 @@ class Main():
             name_list = self.get_name_info(standard_page)
 
             # Get detail stats information both standard and exteded
-            standard_stats_list = self.get_standard_stats_info(standard_page)
-            extended_stats_list = self.get_extended_stats_info(extended_page)
+            standard_stats_list = self.get_stats_info(standard_page)
+            extended_stats_list = self.get_stats_info(extended_page)
 
+            # Combine standard, extended and name data
             data_list_no_header = self.create_data(
                 standard_stats_list, name_list, extended_stats_list)
 
+            # Get players position information
             position_list = self.get_position_info(standard_page)
+            # Add position info into data
             added_position_list = self.add_position_data(
                 position_list, data_list_no_header)
 
+            # Combine different league data with one list
             all_data_list.extend(added_position_list)
 
         all_data_list = self.add_zero_to_stats(all_data_list)
 
-        standard_data_header = self.get_standard_header_info(standard_page)
-        extended_data_header = self.get_extended_header_info(extended_page)
-        # HTML data does not have postion information
+        standard_data_header = self.get_header_info(standard_page, False)
+        extended_data_header = self.get_header_info(extended_page, True)
+        # Header that's gotton from page does not have position
         standard_data_header.insert(1, "POSITION")
 
         standard_data_header.extend(extended_data_header)
 
-        print(standard_data_header)
-
-        # Sort data
-        sorted_data_list = self.create_sorted_data(all_data_list, priority)
-
         # Add header information
-        sorted_data_list.insert(0, standard_data_header)
+        all_data_list.insert(0, standard_data_header)
 
-        self.write_down_data(sorted_data_list)
+        self.write_down_data(all_data_list)
+        # For memory saving
+        self.driver.close()
 
 
 if __name__ == "__main__":
 
-    num = 0
-    while True:
-        num = input(
-            'What is sort priority\n'
-            'Hit(シングルヒット): 1, Tow-Base Hit(ツーベース): 2, '
-            'Three-Base Hit(スリーベース): 3,\n'
-            'HomeRun(ホームラン): 4, Run scored(得点): 5, Run Batted In(打点): 6'
-            'Base On Ball(四球): 7, Strike Out(三振): 8, Stolen Bases(盗塁):  9,'
-            'Caught Stealing(盗塁死): 10, Average(打率): '
-            '11, On-Base Percentage(出塁率): 12'
-            ', Slugging Percentage(長打率): 13, '
-            'On-Base Plus Slugging Percentage(OPS): 14\n')
-        if num.isdecimal() and 1 <= int(num) <= 14:
-            break
-        else:
-            print('Enter right number')
-    # sys.exit()
     main = Main()
-    main.main(num)
+    main.main()
